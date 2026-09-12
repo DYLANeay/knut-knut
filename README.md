@@ -11,7 +11,7 @@ the notebook.
 | Package | Used for |
 | --- | --- |
 | `numpy` | arrays / numeric work |
-| `plotly` | line & scatter plots |
+| `plotly`, `pandas` | line & scatter plots (Plotly Express needs pandas) |
 | `tqdm` | progress bars |
 | `flask` | the web app |
 | `jupyterlab`, `ipywidgets` | running the notebook, rendering Plotly figures |

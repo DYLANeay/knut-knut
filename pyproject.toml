@@ -9,6 +9,7 @@ dependencies = [
     "ipywidgets>=8.1.9",
     "jupyterlab>=4.6.3",
     "numpy>=2.5.3",
+    "pandas>=3.0.5",
     "plotly>=7.0.0",
     "tqdm>=4.70.1",
 ]
