@@ -91,13 +91,91 @@ def sample_theta(rng):
     return rng.uniform(LOW, HIGH)
 
 
+# data = (t, m, is_from_B, goes_to_D, y), tel que renvoyé par load_data()
+# Les 3 versions renvoient (best_loss, best_theta) et ont le même budget n_evals.
+
+def fortuna_classic(data, n_evals, rng):
+    # Version 1 : chaque essai est tiré au hasard, on garde le meilleur
+    best_theta = sample_theta(rng)
+    best_loss = get_loss(best_theta, *data)
+
+    for _ in range(n_evals - 1):
+        theta = sample_theta(rng)
+        loss = get_loss(theta, *data)
+        if loss < best_loss:
+            best_loss, best_theta = loss, theta
+
+    return best_loss, best_theta
+
+
+def fortuna_local(data, n_evals, rng, step_start=0.2, step_end=0.002):
+    # Version 2 (tâche 4) : on cherche autour du meilleur theta, avec un pas qui rétrécit.
+    # Le pas est une fraction de la largeur de chaque intervalle (HIGH - LOW),
+    # pour que phi (largeur 60) et w (largeur 5.5) bougent chacun à leur échelle.
+    best_theta = sample_theta(rng)
+    best_loss = get_loss(best_theta, *data)
+
+    for i in range(n_evals - 1):
+        step = step_start + (step_end - step_start) * i / n_evals
+        theta = best_theta + rng.normal(0, 1, size=len(LOW)) * step * (HIGH - LOW)
+        theta = np.clip(theta, LOW, HIGH)
+        loss = get_loss(theta, *data)
+        if loss < best_loss:
+            best_loss, best_theta = loss, theta
+
+    return best_loss, best_theta
+
+
+def fortuna_restarts(data, n_evals, rng, n_restarts=10):
+    # Version 3 : plusieurs recherches locales courtes depuis des départs différents,
+    # on garde la meilleure. Même budget total : n_evals est partagé entre les redémarrages.
+    best_loss, best_theta = np.inf, None
+
+    for _ in range(n_restarts):
+        loss, theta = fortuna_local(data, n_evals // n_restarts, rng)
+        if loss < best_loss:
+            best_loss, best_theta = loss, theta
+
+    return best_loss, best_theta
+
+
+def compare_fortunas(data, n_runs=10, n_evals=30000, seed=0, success_loss=20):
+    # Lance chaque version n_runs fois avec le même budget et affiche un résumé
+    rng = np.random.default_rng(seed)
+    versions = {
+        "classique": fortuna_classic,
+        "local": fortuna_local,
+        "redémarrages": fortuna_restarts,
+    }
+
+    for name, fortuna in versions.items():
+        losses, thetas = [], []
+        for _ in range(n_runs):
+            loss, theta = fortuna(data, n_evals, rng)
+            losses.append(loss)
+            thetas.append(theta)
+        losses = np.array(losses)
+
+        print(f"{name:13s} | moyenne {losses.mean():6.1f} | médiane {np.median(losses):6.1f} "
+              f"| min {losses.min():6.1f} | max {losses.max():6.1f} "
+              f"| réussis {(losses < success_loss).sum()}/{n_runs}")
+        # phi des runs ratés : pour vérifier l'explication de la borne 0/60
+        failed = [round(th[2], 1) for th, l in zip(thetas, losses) if l >= success_loss]
+        if failed and name != "classique":
+            print(f"{'':13s}   phi des runs ratés : {failed}")
+
+
 if __name__ == "__main__":
     print("to_minutes('13:17') =", to_minutes("13:17"))
 
-    t, m, is_from_B, goes_to_D, y = load_data()
+    data = load_data()
+    t, m, is_from_B, goes_to_D, y = data
     print("trajets      :", len(y))
     print("t min / max  :", t.min(), "/", round(t.max(), 2))
     print("y min / max  :", y.min(), "/", y.max(), "| moyenne :", round(y.mean(), 2))
     print("départs de B :", int(is_from_B.sum()))
     print("vers D       :", int(goes_to_D.sum()))
     print("paramètres   :", PARAM_NAMES)
+
+    print("\nComparaison des 3 versions de Fortuna :")
+    compare_fortunas(data)
