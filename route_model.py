@@ -34,3 +34,21 @@ def predict_duration(theta, t, m, is_from_B, goes_to_D):
     wait = (phi - m) % 60
 
     return (1 - goes_to_D) * E + goes_to_D * rush + is_from_B * (g + wait)
+
+
+def best_route(theta, hour, minute):
+    # Pour un départ hour:minute, calcule la durée prédite des 4 routes et garde la plus courte.
+    # Renvoie (meilleure route, sa durée en min, dict de toutes les durées)
+    t = hour + minute / 60   # heure décimale, pour les heures de pointe
+    m = minute               # minute dans l'heure, pour le ferry
+
+    # durée prédite de chaque route, rangée sous son nom
+    durations = {}
+    for road, switches in ROUTES.items():
+        is_from_B = switches[0]
+        goes_to_D = switches[1]
+        duration = predict_duration(theta, t, m, is_from_B, goes_to_D)
+        durations[road] = float(duration)
+
+    best = min(durations, key=durations.get)
+    return best, durations[best], durations
