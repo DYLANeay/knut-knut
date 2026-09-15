@@ -7,7 +7,7 @@ from pathlib import Path
 
 import numpy as np
 
-from route_model import PARAM_NAMES, predict_duration
+from route_model import PARAM_NAMES, ROUTES, predict_duration
 
 DATA_PATH = Path(__file__).parent / "data" / "traffic.jsonl"
 
@@ -138,6 +138,62 @@ def compare_fortunas(data, n_runs=10, n_evals=30000, seed=0, success_loss=20):
             print(f"{'':13s}   phi des runs ratés : {failed}")
 
 
+def split_data(data, test_ratio=0.2, seed=0):
+    # Répartit les VRAIS trajets en deux groupes, au hasard (aucune ligne créée ni modifiée) :
+    #   train : utilisé par Fortuna pour trouver theta
+    #   test  : caché pendant l'entraînement, sert à mesurer l'erreur sur des trajets "nouveaux"
+    n = len(data[-1])
+    idx = np.random.default_rng(seed).permutation(n)
+    n_test = int(n * test_ratio)
+    test_idx, train_idx = idx[:n_test], idx[n_test:]
+
+    train = tuple(a[train_idx] for a in data)
+    test = tuple(a[test_idx] for a in data)
+    return train, test
+
+
+def errors(y_hat, y):
+    # MAE : erreur moyenne (min) ; RMSE : erreur typique (min), pénalise plus les grosses erreurs
+    residuals = y_hat - y
+    return np.mean(np.abs(residuals)), np.sqrt(np.mean(residuals ** 2))
+
+
+def evaluate(theta, data):
+    # Erreurs du modèle sur un groupe de trajets : au total, puis route par route
+    t, m, is_from_B, goes_to_D, y = data
+    y_hat = predict_duration(theta, t, m, is_from_B, goes_to_D)
+
+    results = {"toutes": errors(y_hat, y)}
+    for road, (b, d) in ROUTES.items():
+        mask = (is_from_B == b) & (goes_to_D == d)
+        results[road] = errors(y_hat[mask], y[mask])
+    return results
+
+
+def evaluate_route_means(train, test):
+    # Point de comparaison sans modèle : prédire la durée moyenne de la route (calculée sur train)
+    _, _, b_train, d_train, y_train = train
+    _, _, b_test, d_test, y_test = test
+
+    y_hat = np.zeros_like(y_test)
+    for b, d in ROUTES.values():
+        mean_train = y_train[(b_train == b) & (d_train == d)].mean()
+        y_hat[(b_test == b) & (d_test == d)] = mean_train
+    return errors(y_hat, y_test)
+
+
+def print_evaluation(train, test, theta):
+    train_res, test_res = evaluate(theta, train), evaluate(theta, test)
+
+    print(f"{'':10s} | {'MAE train':>9s} | {'MAE test':>8s} | {'RMSE train':>10s} | {'RMSE test':>9s}")
+    for name in train_res:
+        (mae_tr, rmse_tr), (mae_te, rmse_te) = train_res[name], test_res[name]
+        print(f"{name:10s} | {mae_tr:9.2f} | {mae_te:8.2f} | {rmse_tr:10.2f} | {rmse_te:9.2f}")
+
+    mae_base, rmse_base = evaluate_route_means(train, test)
+    print(f"\nsans modèle (moyenne de chaque route) : MAE test {mae_base:.2f} | RMSE test {rmse_base:.2f}")
+
+
 if __name__ == "__main__":
     print("to_minutes('13:17') =", to_minutes("13:17"))
 
@@ -149,6 +205,16 @@ if __name__ == "__main__":
     print("départs de B :", int(is_from_B.sum()))
     print("vers D       :", int(goes_to_D.sum()))
     print("paramètres   :", PARAM_NAMES)
+
+    # Étape 6 : entraîner sur train uniquement, mesurer sur test
+    train, test = split_data(data)
+    print(f"\nSéparation : {len(train[-1])} trajets train, {len(test[-1])} trajets test")
+
+    loss, theta = fortuna_restarts(train, 30000, np.random.default_rng(0))
+    print(f"loss train : {loss:.2f}")
+    print("theta      :", {name: round(float(v), 2) for name, v in zip(PARAM_NAMES, theta)})
+    print()
+    print_evaluation(train, test, theta)
 
     print("\nComparaison des 3 versions de Fortuna :")
     compare_fortunas(data)
