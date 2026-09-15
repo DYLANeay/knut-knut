@@ -80,6 +80,17 @@ def predict_duration(theta, t, m, is_from_B, goes_to_D):
     return (1 - goes_to_D) * E + goes_to_D * rush + is_from_B * (g + wait)
 
 
+def get_loss(theta, t, m, is_from_B, goes_to_D, y):
+    # Score d'un theta : erreur quadratique moyenne (MSE), plus c'est bas, mieux c'est
+    y_hat = predict_duration(theta, t, m, is_from_B, goes_to_D)
+    return np.mean((y_hat - y) ** 2)
+
+
+def sample_theta(rng):
+    # Un theta tiré au hasard : chaque paramètre dans ses propres bornes [LOW, HIGH]
+    return rng.uniform(LOW, HIGH)
+
+
 if __name__ == "__main__":
     print("to_minutes('13:17') =", to_minutes("13:17"))
 
